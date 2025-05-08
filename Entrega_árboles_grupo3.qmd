@@ -1,0 +1,1215 @@
+---
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+    code-copy: true
+    toc: true
+    toc-depth: 3 
+    theme:
+      light: flatly
+      dark: darkly
+    page-layout: article
+editor: visual
+lang: es
+execute:
+    warning: false
+number-sections: true
+---
+
+
+![ ](portada.png)
+
+
+
+# Introducción
+
+En 1907, Bruce Ismay, presidente de la White Star Line, y William Perrie, de los astilleros Harland & Wolff, emprendieron un ambicioso proyecto para construir los transatlánticos más grandes y lujosos del mundo: el Olympic, el Titanic y el Gigantic (renombrado Britannic tras el desastre del Titanic). Inspirados en la mitología griega, estas embarcaciones representaban la cima de la ingeniería naval del siglo XX. El Titanic, en particular, fue publicitado como un barco casi insumergible, símbolo de progreso y opulencia, hasta que su viaje inaugural lo convirtió en una tragedia legendaria.
+
+El 10 de abril de 1912, el Titanic partió del puerto de Southampton con destino a Nueva York, comandado por el capitán Edward Smith, en lo que sería su última travesía antes de jubilarse. A bordo viajaban pasajeros de diversos perfiles: millonarios, familias de clase media esperanzadas por un futuro en América, migrantes de tercera clase que ocupaban las zonas más austeras del barco.
+
+Sin embargo, el 14 de abril, a minutos de la medianoche, un iceberg invisible en la oscuridad selló su destino. En apenas tres horas, el "barco de los sueños" naufragó, dejando una marca imborrable en la historia.
+
+# Objetivos
+
+El presente trabajo tiene como objetivo caracterizar a la tripulación y pasajeros del Titanic mediante un *análisis exploratorio* de los datos, identificando posibles patrones en variables como la edad, género o tarifas pagadas. Asimismo, se busca evaluar posibles relaciones entre estas variables y su influencia en la supervivencia de cada pasajero. Finalmente se implementarán *árboles de decisión* como herramienta principal para modelar y analizar los perfiles de supervivencia de los pasajeros, identificando qué factores tuvieron mayor impacto en la posibilidad de sobrevivir al naufragio.
+
+Es importante aclarar que este análisis no tiene un fin predictivo en un contexto real, ya que el hundimiento del Titanic es un evento histórico. Sin embargo, el estudio nos permite explicar las circunstancias y factores que influyeron en la supervivencia.
+
+# Herramientas y Fuente de Datos
+
+El procesamiento y el análisis de los datos se realizan con el software estadístico ***R***. Se emplearán diversas librerías para la manipulación, limpieza y exploración de los datos. También se utilizan librerías específicas para la construcción y visualización de árboles de decisión.
+
+```{r}
+library(knitr)        # Documentos dinámicos y reproducibles
+library(kableExtra)   # Mejora de tablas con knitr
+library(tidyverse)    # Manipulación y visualización de datos
+library(gtExtras)     # Mejoras para tablas con gt
+library(readr)        # Lectura de archivos CSV y otros formatos
+library(dplyr)        # Manipulación de datos\library(rpart) 
+library(rpart)        # Creación de árboles de decisión
+library(rpart.plot)   # Visualización de árboles de decisión
+library(ggplot2)      # Generación de gráficos
+library(randomForest) # Creación de modelos aleatorios de arboles
+library(car)          # Herramientas de regresión avanzada
+library(e1071)        # Algoritmos de aprendizaje automático
+library(caTools)      # División de datos en entrenamiento y prueba
+library(caret)        #proceso de entrenamiento y evaluación de modelos de clasificación y regresión.
+```
+
+Para llevar a cabo el presente trabajo, se utilizaron datos históricos del hundimiento del Titanic obtenidos de la plataforma **Kaggle**, una reconocida página que provee numerosos datasets utilizados en ciencia de datos. Este conjunto de datos incluye información detallada sobre los pasajeros, tales como
+
+```{r}
+
+titanic = read.table("titanic.csv",sep = ",",header = T,dec = ".",encoding = "UTF8")
+variables <- data.frame(
+  Variable = c("survival", "pclass", "sex", "Age", "sibsp", 
+               "parch", "ticket", "fare", "cabin", "embarked"),
+  Definicion = c("Supervivencia (0 = No, 1 = Sí)",
+                 "Clase del boleto (1 = 1ra, 2 = 2da, 3 = 3ra)",
+                 "Sexo del pasajero",
+                 "Edad en años (fraccionaria si es menor a 1)",
+                 "Nº de hermanos/esposos a bordo del Titanic",
+                 "Nº de padres/hijos a bordo del Titanic",
+                 "Número del boleto",
+                 "Tarifa pagada por el pasajero",
+                 "Número de la cabina",
+                 "Puerto de embarque (C = Cherbourg, Q = Queenstown, S = Southampton)"
+                 ),
+  Nota = c("Supervivencia del pasajero",
+           "Un indicador de estatus socioeconómico",
+           "Hombre o mujer",
+           "Estimado si aparece como xx.5",
+           "Hermano/a, hermanastro/a, esposo/a",
+           "Padre/madre, hijo/a, hijastro/a",
+           "Sin información adicional",
+           "Cantidad pagada por el boleto",
+           "Algunas cabinas no están registradas",
+           "Puerto donde el pasajero embarcó"
+           )
+)
+
+kable(variables, "html", caption = "Tabla 1. Descripción de las variables del dataset Titanic") %>%
+  kable_styling(full_width = FALSE, position = "center", bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+# Análisis Exploratorio
+
+El análisis exploratorio de los datos se estructurará en tres secciones principales para comprender el comportamiento de las variables y su relación con la supervivencia de los pasajeros del Titanic.
+
+En primer lugar se realizará un **análisis univariado** donde se estudiarán por separado las distribuciones de cada variable. Posteriormente, en el **análisis bivariado** se evaluarán las relaciones entre variables con la supervivencia o no de los pasajeros. Finalmente, se abordará un **análisis de datos faltantes**, centrándose principalmente en variables como `age` y `cabin`, para identificar la razón de datos ausentes y definir estrategias de imputación si resultaran pertinentes.
+
+El análisis exploratorio permite no sólo explorar características del dataset, sino también preparar los datos para el modelado posterior.
+
+## Análisis univariado
+
+En la *Figura 1* se presenta un análisis exploratorio inicial del conjunto de datos, permitiendo observar las características generales de las variables, su distribución y el porcentaje de datos faltantes.
+
+```{r}
+
+gt_plt_summary(titanic%>%
+                 select(-PassengerId),title="Figura 1. Análisis exploratorio inicial de las variables en conjunto")
+```
+
+La variable binaria `survived` no presenta datos faltantes y su media de 0,4 sugiere que aproximadamente el 40% de los pasajeros sobrevivió confirmando una mayor proporción de pasajeros fallecidos. La variable `Pclass`, que hace referencia a la clase socio-económica, también no presenta datos faltantes, la mediana igual a 3 sugiere que la mitad de los pasajeros pertenecían a la tercera clase. La variable `sex` que presenta dos categorías (masculino y femenino), no posee valores faltantes, se observa una proporción mayor del género masculino. La variable `Age` presenta casi un 20% de datos faltantes, lo cual es un aspecto importante a considerar en análisis posteriores. La distribución muestra que la mitad de los pasajeros no superaban los 28 años. Las variables relacionadas al número de familiares a bordo `SibSp` y `Parch` muestran valores cercanos a 0, es decir, que la mayoría de pasajeros viajaron solos o con muy pocos familiares. La variable relacionada a la tarifa, `Fare`, no tiene valores faltantes y presenta una media de 32,2 y una mediana de 14,5; lo que sugiere la presencia de outliers asociadas a tarifas muy altas. Estos valores extremos corresponden probablemente a pasajeros de primera clase. Aunque la figura sugiere que la variable `Cabin` no tiene valores faltantes, efectivamente hay valores incompletos ya que la categoría vacío es considerada dentro de las 148 categorías de cabina. Finalmente, el puerto de embarque `Embarked`, es una variable que cuenta con 4 categorías. Sin embargo son 3 los puertos posibles (Cherbourg, Queenstown y Southampton), la cuarta categoría corresponde a vacío.
+
+### Supervivencia (Survived)
+
+En la *Figura 2* se observa que el 61,6% de los pasajeros a bordo del Titanic no sobrevivió al naufragio, reflejando una mayoría marcada en la distribución de los resultados de supervivencia.
+
+```{r,fig.alt=11}
+titanic_percent <- titanic %>%
+  group_by(Survived) %>%
+  summarise(Count = n()) %>%
+  mutate(
+    Percentage = Count / sum(Count) * 100,
+    Survived = factor(Survived, levels = c(0, 1), labels = c("No", "Sí"))
+  )
+
+# Gráfico de barras con porcentajes
+ggplot(titanic_percent, aes(x = Survived, y = Percentage)) +
+  geom_bar(stat = "identity", fill = "#AACDD0") +
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), vjust = -0.5, size = 4) +
+  labs(title = "Figura 2. Distribución porcentual de supervivencia de los pasajeros del Titanic",
+       x = "Supervivencia", 
+       y = "Porcentaje") +
+  theme_minimal()
+```
+
+### Clase del boleto (Pclass)
+
+Más de la mitad de los pasajeros viajaban en tercera clase, sólo el 24% pagó por boletos de primera clase y el 20,7% adquirió boletos de segunda clase (*Figura 3*).
+
+```{r,fig.alt=12}
+titanic_percent_pclass <- titanic %>%
+  group_by(Pclass) %>%
+  summarise(Count = n()) %>%
+  mutate(
+    Percentage = Count / sum(Count) * 100,
+    Pclass = factor(Pclass, levels = c(1, 2, 3), labels = c("1era", "2da", "3ra"))
+  )
+
+ggplot(titanic_percent_pclass, aes(x = Pclass, y = Percentage)) +
+  geom_bar(stat = "identity", fill = "#AACDD0") +
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), vjust = -0.5, size = 4) +
+  labs(title = "Figura 3. Distribución porcentual por clase de boleto", 
+       x = "Clase", 
+       y = "Porcentaje") +
+  theme_minimal()
+```
+
+### Género (Sex)
+
+En la *Figura 4* se observa que mayoría de los pasajeros del Titanic eran hombres y sólo el 35,2% eran mujeres.
+
+```{r}
+titanic_percent <- titanic %>%
+  group_by(Sex) %>%
+  summarise(Count = n()) %>%
+  mutate(
+    Percentage = Count / sum(Count) * 100,
+    Sex = factor(Sex, levels = c("male", "female"), labels = c("Hombres", "Mujeres"))
+  )
+
+ggplot(titanic_percent, aes(x = Sex, y = Percentage)) +
+  geom_bar(stat = "identity", fill = "#AACDD0") +
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), vjust = -0.5, size = 4) +
+  labs(
+    title = "Figura 4. Distribución porcentual del género",
+    x = "Género",
+    y = "Porcentaje"
+  ) +
+  theme_minimal()
+```
+
+### Edad (Age)
+
+En la *Figura 5* se destaca que el 20% de los pasajeros presenta valores faltantes en esta variable (Figura 1). Entre los datos disponibles, la edad mínima registrada es de 0,42 años, correspondiente a un bebé, mientras que la edad máxima es de 80 años, reflejando un amplio rango de edades entre los pasajeros. La edad promedio es de 29,6 años, ligeramente superior a la mediana de 28 años.
+
+Aunque los valores faltantes podrían completarse utilizando información de la [*Enciclopedia Titánica (2019)*](https://www.encyclopedia-titanica.org/), se optó por no hacerlo, ya que se empleó un método alternativo para determinar si un pasajero era menor o mayor. Este enfoque será detallado más adelante en este trabajo (*Sección 4.4.1*).
+
+```{r}
+ggplot(data = titanic, aes(y = Age)) +
+  geom_boxplot(fill = "#AACDD0", color = "black", outlier.colour = "#AACDD0", outlier.shape = 16) +
+  labs(title = "Figura 5. Boxplot de edades de los pasajeros del titanic", y = "edad") +
+  theme_minimal()
+```
+
+### Tarifa (Fare)
+
+La *Figura 6* muestra que algunos pasajeros han viajado de manera gratuita (tarifa igual a 0) y también se encuentran pasajeros que han abonado la tarifa máxima igual a 512. La tarifa media es de 32,2 mientras que la mediana de 14 indica la fuerte asimetría de esta variable.
+
+```{r}
+ggplot(data = titanic, aes(x = Fare)) +
+  geom_histogram(binwidth = 10, fill = "#AACDD0", color = "black") +
+  labs(title = "Figura 6. Distribución de las tarifas pagadas", x = "Tarifa", y = "Frecuencia") +
+  theme_minimal()
+```
+
+### Puerto de embarque (Embarked)
+
+Antes de comenzar su fatídico viaje hacia Nueva York, el Titanic hizo escala en tres puertos principales (*Figura 7*), donde embarcaron pasajeros y se realizaron otras actividades:
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| out.width: 80%
+#| fig.align: center
+knitr::include_graphics("ruta.png")
+
+```
+
+*Figura 7. Ruta del Titanic*
+
+1.  **Southampton, Inglaterra (10 de abril de 1912):** Este fue el puerto de partida del Titanic y el lugar donde subió la mayoría de los pasajeros.
+
+2.  **Cherburgo, Francia (10 de abril de 1912):** Tras zarpar de Southampton, el Titanic realizó una breve escala en Cherburgo, donde se embarcaron más pasajeros.
+
+3.  **Queenstown (actual Cobh), Irlanda (11 de abril de 1912):** Esta fue la última escala antes de que el Titanic iniciara su travesía por el Atlántico hacia Nueva York. En este puerto, además de abordar algunos pasajeros adicionales, se cargaron correos y suministros para el viaje.
+
+En la *Figura 8* se presenta la distribución de los embarques de los pasajeros por puerto. De los pasajeros a bordo en el momento del hundimiento, la mayoría (644) habían embarcado en Southampton, 168 en Cherburgo, y sólo 77 en Queenstown. Sin embargo, se encontraron dos pasajeros con el puerto de embarque vacío en los registros. Al analizar estos casos, se descubrió que ambos compartían el mismo número de boleto y cabina. La causa de esta inconsistencia es desconocida y podría deberse a un error de registro, información incompleta o transferencia desde otro barco. Según la *Enciclopedia Titanica (2019)*, se trataba de una mujer y su camarera que abordaron el Titanic en Southampton.
+
+```{r}
+titanic <- titanic %>%
+  mutate(
+    Embarked = ifelse(is.na(Embarked) | Embarked == "", "Desconocido", Embarked),
+    Embarked = factor(Embarked, 
+                      levels = c("C", "Q", "S", "Desconocido"), 
+                      labels = c("Cherbourg", "Queenstown", "Southampton", "NA"))
+  )
+
+ggplot(data = titanic, aes(x = Embarked)) +
+  geom_bar(fill = "#AACDD0") +
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5, size = 4) +
+  labs(
+    title = "Figura 8. Distribución por puerto de embarque", 
+    x = "Puerto de embarque", 
+    y = "Cantidad de pasajeros"
+  ) +
+  theme_minimal()
+
+```
+
+### Familiares a bordo (SibSp y Parch)
+
+Las variables `SibSp` y `Parch` hacen referencia al número de familiares, la primera en específico al número de hermanos o cónyuge y la segunda variable hace referencia al número de padres e hijos.
+
+En las *Figuras 9* y *10* se encuentra que una gran proporción de pasajeros viajó solo, una menor proporción viajó acompañado de su pareja o hijo y en menor cantidad se encontraron grupos familiares numerosos.
+
+```{r}
+ggplot(data = titanic, aes(x = factor(SibSp))) +
+  geom_bar(fill = "#AACDD0") +
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5, size = 4) +
+  labs(
+    title = "Figura 9. Distribución del número de hermanos/cónyugue a bordo", 
+    x = "Cantidad de hermanos/cónyugue (SibSp)", 
+    y = "Frecuencia"
+  ) +
+  theme_minimal()
+
+
+ggplot(data = titanic, aes(x = factor(Parch))) +
+  geom_bar(fill = "#AACDD0") +
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5, size = 4) +
+  labs(
+    title = "Figura 10. Distribución del número de padres/hijos a bordo", 
+    x = "Cantidad de padres/hijos (Parch)", 
+    y = "Frecuencia"
+  ) +
+  theme_minimal()
+
+
+```
+
+### Cabina
+
+En el caso de esta variable, se encontró que la mayoría de los pasajeros no tenía una cabina asignada y que también existían pasajeros, aunque en una proporción muy baja, con más de una cabina asignada.
+
+A bordo del Titanic, las asignaciones de cabinas reflejaban tanto las diferencias sociales de la época como las necesidades individuales de los pasajeros. (*Figura 11*)
+
+```{r, fig.alt=6}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig.align: center
+
+knitr::include_graphics("plano.png")
+
+```
+
+*Figura 11: Plano del Titanic*
+
+Muchos de los pasajeros, especialmente aquellos de tercera clase, no tenían cabinas asignadas porque esta categoría estaba diseñada para ofrecer alojamiento colectivo en literas compartidas en áreas comunes, una práctica común en los viajes transatlánticos económicos de la época. Además, los registros no siempre incluían detalles específicos para los pasajeros de segunda y tercera clase, lo que contribuye a la falta de información sobre asignaciones precisas.
+
+Dado el elevado número de valores faltantes en la variable de `Cabin`, optamos por crear una nueva variable categórica denominada `cabin_status`, que clasifica a los pasajeros en función de si tenían o no una cabina asignada.
+
+En la *Figura 12* se presenta la distribución de la nueva variable y se encuentra que la mayoría de los pasajeros del Titanic (687 pasajeros) no tenían cabina asignada, mientras que solo 204 contaban con una. Esta distribución creemos que está directamente relacionada con la clase del boleto, ya que los pasajeros de tercera clase, que representaban más de la mitad del total.
+
+```{r}
+titanic_cabin <- titanic %>%
+  mutate(
+    Cabin = ifelse(Cabin == "", NA, Cabin), # Convertir espacios vacíos en NA
+    cabin_status = ifelse(is.na(Cabin), "Sin cabina asignada", "Con cabina asignada") # Variable dicotómica
+  )
+titanic <- titanic %>%
+  mutate(
+    Cabin = ifelse(Cabin == "", NA, Cabin), # Convertir espacios vacíos en NA
+    cabin_status = ifelse(is.na(Cabin), "Sin cabina asignada", "Con cabina asignada") # Crear la nueva variable
+  )
+# Resumen numérico
+summary_cabin <- titanic_cabin %>%
+  group_by(cabin_status) %>%
+  summarise(Cantidad = n())
+
+# Crear el gráfico con frecuencias
+ggplot(summary_cabin, aes(x = cabin_status, y = Cantidad, fill = cabin_status)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Cantidad), vjust = -0.5, size = 4) + # Agregar las frecuencias
+  labs(
+    title = "Figura 12. Distribución del estado de cabinas asignadas",
+    x = "Estado de Cabina", 
+    y = "Cantidad de Pasajeros"
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+
+```
+
+Dentro del grupo de pasajeros con cabina asignada, se identificó que 24 de ellos tenían más de una cabina asignada. Esto podría deberse a varios factores, como errores en los registros, familias o grupos que compartían cabinas adicionales, o la asignación de cabinas múltiples a pasajeros de mayor rango o categoría en el barco, lo cual era una práctica común para acomodar necesidades específicas durante viajes de lujo.
+
+## Análisis bivariado
+
+Se realiza un análisis bivariado entre la variable de interés `Survived` y todas las demás variables del dataset del Titanic. Este análisis exploratorio tiene como objetivo identificar patrones, tendencias y relaciones potenciales entre nuestra variable respuesta objetivo.
+
+### Por clase de boleto
+
+En la *Figura 13* se observa la distribución de la supervivencia de los pasajeros del Titanic según la clase de boleto. Se encuentra que más de la mitad de los pasajeros de primera clase sobrevivieron, lo que refleja las mayores probabilidades de supervivencia para esta categoría.
+
+En contraste, la situación para los pasajeros de tercera clase es dramáticamente diferente. Cerca del 75% de los pasajeros de tercera clase no sobrevivieron, evidenciando las desventajas de esta clase en términos de acceso a los recursos de salvamento.
+
+Finalmente, para los pasajeros de segunda clase, se observa una distribución más equilibrada. Esto sugiere que, aunque las probabilidades eran menores que en primera clase, los pasajeros de segunda clase aún tenían mejores oportunidades de supervivencia que aquellos de tercera clase.
+
+```{r}
+ggplot(titanic, aes(x = factor(Pclass), fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),
+    vjust = -0.5,
+    size = 3
+  ) + # Frecuencias arriba de las barras
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(
+    title = "Figura 13. Supervivencia por clase de boleto", 
+    x = "Clase", 
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  theme_minimal()
+
+```
+
+### Por género
+
+La *Figura 14* refleja una marcada diferencia en las tasas de supervivencia según el género de los pasajeros. Aunque las mujeres representaban una menor proporción del total de pasajeros (32,5%), su tasa de supervivencia resultó mayor que la de los hombres. Aproximadamente 75% de las mujeres sobrevivieron, mientras que solo 18,9% de los hombres sobrevivieron.
+
+```{r}
+ggplot(titanic, aes(x = Sex, fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) + 
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),
+    vjust = -0.5,
+    size = 3
+  ) +  # Frecuencias encima de las barras
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(
+    title = "Figura 14. Supervivencia por género",
+    x = "Género",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  theme_minimal()
+```
+
+### Por edad
+
+El boxplot de la *Figura 15* revela una ligera ventaja de supervivencia para pasajeros más jóvenes, con una mediana de 25-27 años para sobrevivientes versus 28-30 años para no sobrevivientes. Las distribuciones son simétricas y muestran dispersión similar en ambos grupos, con valores atípicos en edades avanzadas. Esto sugiere que la edad, aunque relevante, no fue un factor determinante en la supervivencia del desastre. Sin embargo es necesario recordar que esta variable cuenta con muchos valores faltantes, que podrían estar afectando estas conclusiones.
+
+```{r}
+ggplot(titanic, aes(x = factor(Survived), y = Age, fill = factor(Survived))) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(title = "Figura 15. Distribución de edad por supervivencia", x = "Supervivencia", 
+       y = "Edad", fill = "Supervivencia") +
+  theme_minimal()
+
+```
+
+### Por hermanos/cónyugue
+
+En la *Figura 16* se observa que los pasajeros sin acompañantes (SibSp = 0) representan el grupo más numeroso tanto entre los supervivientes (210) como entre los no supervivientes (398).
+
+Por otro lado, los pasajeros con un acompañante (SibSp = 1) muestran mayores probabilidades de supervivencia. Sin embargo, a medida que aumenta el número de acompañantes, las tasas de supervivencia disminuyen notoriamente, probablemente debido a dificultades logísticas en la evacuación en grupo y recursos limitados durante el naufragio.
+
+```{r}
+ggplot(titanic, aes(x = factor(SibSp), fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +  # Barras separadas
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),
+    vjust = -0.5,
+    size = 3
+  ) +  # Frecuencias encima de las barras
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(
+    title = "Figura 16. Supervivencia según el número de hermanos/cónyugue",
+    x = "Número de hermanos/cónyugue (SibSp)",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  theme_minimal()
+
+```
+
+### Por padres/hijos
+
+En la *Figura 17* se encuentra que los pasajeros con un único acompañante (Parch = 1) parecen haber tenido mayores probabilidades de supervivencia. Sin embargo, los pasajeros que viajaban solos (Parch = 0) y aquellos con varios acompañantes enfrentaron mayores dificultades, posiblemente debido a la falta de soporte en el primer caso y a la logística más compleja en el segundo.
+
+```{r}
+ggplot(titanic, aes(x = factor(Parch), fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +  # Barras separadas
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),
+    vjust = -0.5,
+    size = 3
+  ) +  # Frecuencias encima de las barras
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(
+    title = "Figura 17. Supervivencia según el número de hermanos/cónyugue",
+    x = "Número de padres/hijos (Parch)",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  theme_minimal()
+```
+
+### Por tarifa
+
+La *Figura 18* refuerza la relación entre el costo del boleto y la probabilidad de supervivencia. Los pasajeros que pagaron tarifas más altas, probablemente correspondientes a clases superiores, tuvieron mayores probabilidades de sobrevivir, mientras que aquellos con tarifas más bajas enfrentaron mayores dificultades.
+
+```{r}
+ggplot(titanic, aes(x = factor(Survived), y = Fare, fill = factor(Survived))) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(title = "Figura 18. Distribución de las tarifas abonadas según supervivencia", x = "Supervivencia", 
+       y = "Tarifa", fill = "Supervivencia") +
+  theme_minimal()
+```
+
+### Por puerto de embarque
+
+En la *Figura 19* se observa una relación entre el puerto de embarque y la supervivencia de los pasajeros del Titanic. En *Southampton*, el puerto con la mayor cantidad de pasajeros, solo el 33.7% de los pasajeros sobrevivieron, representando la tasa más baja de supervivencia. En *Queenstown*, la tasa de supervivencia es del 39.0%, mientras que en *Cherbourg*, se registra la tasa más alta con un 55.4% de pasajeros sobrevivientes. Finalmente, los valores faltantes (NA) corresponden únicamente a dos pasajeros, ambos supervivientes (100%).
+
+```{r}
+ggplot(titanic, aes(x = Embarked, fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +  # Barras separadas por categoría
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),
+    vjust = -0.5,
+    size = 3
+  ) +  # Agregar las frecuencias sobre las barras
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(
+    title = "Figura 19. Supervivencia por puerto de embarque",
+    x = "Puerto de embarque",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  theme_minimal()
+
+```
+
+### Por asignación de cabina
+
+La *Figura 20* revela una posible relación entre la asignación de cabinas y las probabilidades de supervivencia. Los pasajeros con cabina asignada muestran una tasa de supervivencia del 66.7%, mientras que aquellos sin cabina asignada tienen una tasa menor, del 30.0%.
+
+```{r}
+
+ggplot(titanic, aes(x = cabin_status, fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +  
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),
+    vjust = -0.5,
+    size = 3
+  ) +  
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  labs(
+    title = "Figura 20. Supervivencia según asignación de cabina",
+    x = "Estado de cabina",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  theme_minimal()
+
+
+```
+
+## Otras relaciones interesantes
+
+### Supervivencia según sexo y clase
+
+La *Figura 21* muestra cómo la supervivencia varía según la combinación de género (`Sex`) y clase de boleto (`Class`) en el Titanic. Las mujeres de primera clase tienen la mayor proporción de supervivencia, alcanzando un notable 97%, mientras que los hombres de esta clase solo alcanzan un 37%. En segunda clase, las mujeres también presentan una elevada tasa de supervivencia del 92%, en contraste con los hombres, donde solo un 16% sobrevivió. Este patrón resalta una clara priorización de las mujeres durante la evacuación, especialmente en las clases superiores.
+
+En tercera clase, la supervivencia de los hombres es la más baja, con solo un 14%, mientras que las mujeres de esta misma clase sobreviven en un 50% de los casos.
+
+```{r}
+titanic_summary <- titanic %>%
+  group_by(Pclass, Sex, Survived) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(Pclass, Sex) %>%
+  mutate(Proportion = Count / sum(Count))
+
+# Gráfico con proporciones y etiquetas
+ggplot(titanic_summary, aes(x = Sex, y = Proportion, fill = Survived)) +
+  geom_bar(stat = "identity", position = "fill") +  # Barras proporcionales
+  geom_text(
+    aes(label = scales::percent(Proportion, accuracy = 1)), 
+    position = position_fill(vjust = 0.5), 
+    color = "white", size = 4
+  ) +
+  facet_wrap(~Pclass) +  # Dividir por clase
+  ggtitle("Figura 21. Gráfico por sexo, clase y supervivencia") +
+  xlab("Sexo") +
+  ylab("Proporción") +
+  labs(fill = "Supervivientes") +
+  theme_minimal()
+
+```
+
+### por letra de cabina
+
+La *Tabla 2* analiza la distribución de las cabinas en el Titanic según diferentes características, como clase, género, supervivencia, tarifa y edad promedio. Se observa que las cabinas con letras asociadas a primera clase (A, B, C, D, y T) tienen altas tasas de supervivencia, destacándose la cabina B con un 74% de supervivientes. En contraste, las cabinas de categorías inferiores (F, G) y aquellas sin cabina asignada (NA) tienen tasas de supervivencia significativamente menores, como el caso de los pasajeros sin cabina asignada, que solo presentan un 30% de supervivencia.
+
+En cuanto a las tarifas y edades promedio, las cabinas de primera clase como B y C tienen las tarifas más elevadas (113.51 y 100.15, respectivamente) y están ocupadas por pasajeros ligeramente mayores en promedio, alrededor de 35-36 años. Por otro lado, las cabinas F y G, con las tarifas más bajas (18.70 y 13.58, respectivamente), reflejan las condiciones más desfavorables, con supervivencias menores al 50%. Estos resultados nos sugieren una relación entre la asignación de cabina, el nivel socioeconómico y las probabilidades de supervivencia en el Titanic.
+
+```{r}
+
+titanic <- titanic %>%
+  mutate(Cabin_Letter = ifelse(Cabin == "" | is.na(Cabin), NA, substr(Cabin, 1, 1)))
+class_summary <- titanic %>%
+  group_by(Cabin_Letter) %>%
+  summarise(
+    Cantidad = n(),
+    Share_1era_clase = (round(mean(Pclass == 1, na.rm = TRUE),2)*100),
+    Share_hombres= (round(mean(Sex== "male", na.rm = TRUE),2)*100),
+    Share_supervivencia = (round(mean(Survived, na.rm = TRUE),2)*100),
+    Precio_promedio = round(mean(Fare, na.rm = TRUE),2),
+    Edad_promedio= round(mean(Age,na.rm=TRUE),2)
+  )
+
+class_summary %>%
+  kbl(
+    col.names = c("Letra de Cabina", "Cantidad", "1era clase (%)", 
+                  "Hombres (%)", "Supervivencia(%)", 
+                  "Tarifa Promedio", "Edad Promedio"),
+    caption = "Tabla 2. resumen de métricas por letra de cabina",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+```
+
+Si se analiza la asignación de cabinas según la clase del boleto (*Figura 22*), se observa que los pasajeros de primera clase tienen la mayor proporción de cabinas asignadas, con un 81.5% del total, mientras que en segunda clase esta proporción desciende al 8.7%, y en tercera clase es aún menor, con solo un 2.4% de los pasajeros teniendo cabina asignada. Estas cifras reflejan diferencias significativas en las condiciones de alojamiento según la clase, con los pasajeros de primera clase disfrutando de un acceso mucho mayor a cabinas individuales en comparación con aquellos de clases inferiores.
+
+```{r}
+# Crear el resumen de frecuencias
+titanic_summary <- titanic %>%
+  group_by(Pclass, cabin_status) %>%
+  summarise(Count = n(), .groups = "drop")
+
+ggplot(titanic_summary, aes(x = factor(Pclass), y = Count, fill = cabin_status)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +  # Barras lado a lado
+  geom_text(
+    aes(label = Count),
+    position = position_dodge(width = 0.9),  # Etiquetas alineadas con las barras
+    vjust = -0.5,  # Posicionar encima de las barras
+    size = 3
+  ) +
+  labs(
+    title = "Figura 22. Distribución de cabina por clase",
+    x = "Clase",
+    y = "Frecuencia",
+    fill = "Estado de Cabina"
+  ) +
+  theme_minimal()
+```
+
+Es importante destacar que la falta de una cabina asignada no siempre debe interpretarse como un dato faltante, sino como una característica propia del boleto, particularmente en las clases más bajas. Los pasajeros de segunda y tercera clase a menudo compartían espacios comunes en lugar de contar con cabinas individuales, una práctica común en los viajes transatlánticos económicos de la época.
+
+### Nombres
+
+La transformación realizada sobre la columna Name del dataset Titanic tiene como objetivo extraer los títulos de las personas (por ejemplo, "Mr.", "Miss.", "Mrs.") y agruparlos en una nueva columna llamada `Title`. Esto se logra utilizando expresiones regulares para identificar y capturar la parte relevante del nombre, seguida de un proceso de limpieza (`trimws`) para asegurar que no haya espacios en blanco innecesarios.
+
+Esta transformación resulta útil por varias razones. En primer lugar, los títulos proporcionan información valiosa sobre las características sociodemográficas de los pasajeros, como género, estatus marital y posición social, lo cual puede estar correlacionado con otros aspectos del dataset, como la supervivencia o la edad. En segundo lugar, esta variable puede ser utilizada posteriormente para imputar valores faltantes en otras columnas.
+
+La *Tabla 3* evidencia cómo los títulos asociados a los pasajeros reflejan diferencias en la supervivencia. Por ejemplo, el título "Lady" muestra una supervivencia del 100%, al igual que "the Countess", indicando posibles privilegios sociales. En contraste, el título "Mr", el más común con 517 pasajeros, tiene una baja tasa de supervivencia del 15.67%. Destaca el caso del título "Capt", que hace referencia al capitán, no sobrevivió al naufragio. Otros títulos como "Master" (57.5%) y "Miss" (69.78%) presentan mayores probabilidades de supervivencia, posiblemente asociados a jóvenes y mujeres, respectivamente, reflejando el impacto de las normas sociales y de género durante el rescate.
+
+```{r}
+title_summary <- titanic %>%
+  mutate(Title = sub(".*,(.*?)\\..*", "\\1", Name) %>% trimws()) %>%
+  group_by(Title) %>%
+  summarise(
+    Cantidad = n(),
+    Supervivencia = round(mean(Survived, na.rm = TRUE) * 100, 2)  # Porcentaje de supervivencia
+  )
+
+title_summary %>%
+  kbl(
+    col.names = c("Título", "Cantidad", "Supervivencia (%)"),
+    caption = "Tabla 3. Distribución de títulos y supervivencia en el Titanic",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+
+```
+
+Los títulos extraídos del dataset reflejan el rango social, profesional y el género de los pasajeros. Títulos como Mr., Miss., Mrs. y Master son los más comunes y representan a hombres, mujeres solteras, mujeres casadas y niños, respectivamente. Títulos honoríficos como Sir, Lady, the Countess y Jonkheer indican nobleza o estatus aristocrático. Otros títulos, como Dr., Capt., Major y Rev., hacen referencia a profesiones o rangos militares, con tasas de supervivencia variables dependiendo del contexto. Finalmente, títulos menos comunes como Mlle, Mme y Ms. son variantes culturales o sociales que también reflejan género y estado civil. Esta diversidad de títulos permite inferir información sociodemográfica crucial para análisis y futuras imputaciones de datos faltantes, como edad o género.
+
+## Análisis de valores faltantes
+
+El análisis de valores faltantes es un paso crucial en la limpieza y preparación de datos, ya que permite identificar patrones y posibles sesgos en la información disponible. En el caso del Titanic, las variables con mayor cantidad de datos faltantes son Edad y Cabina (*Tabla 4*), lo que refleja desafíos comunes en encuestas y registros históricos. La ausencia de información sobre la edad puede dificultar la caracterización demográfica, mientras que la falta de datos de cabina puede estar vinculada a pasajeros de clases más bajas o sin asignación específica. Este análisis servirá para decidir estrategias de imputación o manejo de estos valores en los modelos posteriores.
+
+```{r}
+missing_summary <- titanic %>%
+  summarise_all(~sum(is.na(.))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Cantidad_NA") %>%
+  mutate(Proporcion_NA = round(Cantidad_NA / nrow(titanic) * 100, 2)) %>%
+  filter(Cantidad_NA > 0)
+
+missing_summary %>%
+  kbl(
+    col.names = c("Variable", "Cantidad de NA", "Proporción de NA (%)"),
+    caption = "Tabla 4. Resumen de valores faltantes por variable",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+
+```
+
+No se realizará una imputación de los valores faltantes en la variable de cabina debido a la incertidumbre sobre la naturaleza de estos datos. Como se ha mencionado previamente, en algunos casos, como los pasajeros de primera clase, la no asignación de cabina podría deberse a datos faltantes o a otras razones, como un error en el registro o cambios de última hora en la asignación de espacios. En contraste, para los pasajeros de tercera clase, la falta de cabina asignada probablemente refleje la realidad de que no correspondía cabina privada según el tipo de boleto adquirido. Dado este contexto, para futuros análisis se optará por trabajar con una variable binaria que indique simplemente si el pasajero tenía o no una cabina asignada, evitando interpretaciones erróneas derivadas de imputaciones.
+
+### Estudio de los valores faltantes de la variable edad (Age)
+
+En el caso de los valores faltantes de la variable `Age`, se utilizará la variable `Title`, derivada previamente de los nombres de los pasajeros, como referencia para estimar el rango de edad correspondiente. Los títulos, como Mr., Miss., Mrs., o Master., proporcionan información contextual sobre la edad probable de los pasajeros, indicando si se trataba de adultos, jóvenes o niños. Sin embargo, no se imputará un valor específico de edad. En su lugar, se trabajará con una distinción binaria que clasifique a los pasajeros como menores o mayores de edad, asegurando que la imputación sea coherente con la información disponible y manteniendo la simplicidad en el modelo de análisis.
+
+En primer lugar, se presenta en la siguiente tabla (*Tabla 5*) la distribución y proporción de títulos entre los pasajeros con la variable `Age` ausente.
+
+```{r}
+titanic <- titanic %>%
+  mutate(Title = sub(".*,(.*?)\\..*", "\\1", Name) %>% trimws())
+
+
+missing_age <- titanic %>%
+  filter(is.na(Age))
+
+missing_age_title_summary <- missing_age %>%
+  group_by(Title) %>%
+  summarise(
+    Cantidad = n(),
+    Proporcion = round(n() / nrow(missing_age) * 100, 2)
+  )
+
+missing_age_title_summary %>%
+  kbl(
+    col.names = c("Título", "Cantidad", "Porcentaje (%)"),
+    caption = "Tabla 5. Distribución de valores faltantes en edad por título",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+
+```
+
+El título Mr. representa el mayor porcentaje, con un 67.2% de los casos, seguido de Miss. con un 20.3% y Mrs. con un 9.6%. Los títulos menos frecuentes son Master. (2.26%) y Dr. (0.56%). Esta distribución sugiere que la mayoría de los valores faltantes de edad corresponden a pasajeros masculinos adultos (Mr.), mientras que los otros títulos aportan información sobre el género y posible rango de edad, como el caso de Master., que indica niños varones.
+
+En el caso de las mujeres, es necesario realizar un análisis más detallado para abordar los valores faltantes de la variable `Age`. Mientras que el título Mrs. se asocia claramente con mujeres adultas casadas, lo que permite imputar directamente su clasificación como mayores de edad, el título Miss. presenta ambigüedad. Este título puede corresponder tanto a niñas como a mujeres adultas solteras, lo que dificulta una imputación precisa sin un análisis adicional.
+
+El análisis de la variable `Parch` (padres e hijos) ofrece una perspectiva útil para interpretar los valores faltantes en la edad de las pasajeras con el título Miss..Si una mujer con el título Miss. tiene un valor de `Parch` es 0, es razonable suponer que se trata de una adulta soltera que viaja sin acompañantes familiares cercanos. Por otro lado, si `Parch` es mayor o igual a 1, es probable que sea una niña acompañada por un padre o tutor.
+
+```{r}
+missing_age_miss <- titanic %>%
+  filter(is.na(Age) & Title == "Miss")
+
+# Resumen de la variable Parch para estos pasajeros
+missing_age_miss_summary <- missing_age_miss %>%
+  group_by(Parch) %>%
+  summarise(
+    Cantidad = n(),
+    Proporcion = round(n() / nrow(missing_age_miss) * 100, 2)  # Proporción sobre el total de 'Miss' con NA en Age
+  )
+
+missing_age_miss_summary  %>%
+  kbl(
+    col.names = c("Padres/Hijos", "Cantidad", "Porcentaje (%)"),
+    caption = "Tabla 6. cantidad de padres/hijos de las pasajeras con título Miss. y edad faltante",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+
+```
+
+Basándonos en la distribución observada en la *Tabla 6*, asumiremos que las mujeres con el título Miss. y un valor de `Parch` 0 corresponden a mujeres adultas solteras que viajaban sin padres ni hijos, clasificándolas como mayores de edad. El resto serán consideradas niña.
+
+```{r}
+min_age_female <- titanic %>%
+  filter(Sex == "female" & !is.na(Age)) %>%  # Filtrar solo mujeres con edad no faltante
+  group_by(Title) %>%
+  summarise(Minima_Edad = min(Age, na.rm = TRUE),
+            Maxima_Edad =max(Age,na.rm=TRUE))
+
+min_age_female %>%
+  kbl(
+    col.names = c("Título", "Edad mínima", "Edad máxima"),
+    caption = "Tabla 7. Edades mínimas y máximas por título de mujeres",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+```
+
+A partir de la observación de los valores mínimos y máximos de edad según los títulos (*Tabla 7*), la variable Mrs. resulta particularmente relevante, ya que incluye edades desde los 14 hasta los 63 años. Esto sugiere que, en la época, las mujeres podían ser consideradas adultas a partir de los 14 años, dado que este es el valor mínimo asociado a mujeres casadas. Por lo tanto, estableceremos el punto de corte entre menores y mayores de edad para las mujeres en 14 años, considerando que este límite refleja tanto los datos disponibles como las normas sociales de ese periodo.
+
+```{r}
+min_age_male <- titanic %>%
+  filter(Sex == "male" & !is.na(Age)) %>%  # Filtrar solo mujeres con edad no faltante
+  group_by(Title) %>%
+  summarise(Minima_Edad = min(Age, na.rm = TRUE),
+            Maxima_Edad =max(Age,na.rm=TRUE))
+
+min_age_male %>%
+  kbl(
+    col.names = c("Título", "Edad mínima", "Edad máxima"),
+    caption = "Tabla 8. Edades mínimas y máximas por título de hombres",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+```
+
+En el caso de los hombres, el título Master es clave, ya que indica edades entre 0.42 y 12 años, asociadas exclusivamente a niños varones (*Tabla 8*). Por otro lado, el título Mr., que incluye edades desde los 11 hasta los 80 años, sugiere que a partir de los 11 años ya podrían ser considerados adultos en ciertos contextos.
+
+Sin embargo, para establecer un criterio más conservador y alineado con las normas sociales de la época, podría tomarse un punto de corte de 12 años para diferenciar entre menores y mayores de edad en hombres.
+
+En base a los puntos de cortes establecidos, teniendo en cuenta también la distinción de la variable `Parch` para diferenciar Miss., se genera la nueva variable binaria que indica si el pasajero era menor o mayor de edad (*Tabla 9*).
+
+```{r}
+titanic <- titanic %>%
+  mutate(
+    Age_Group = case_when(
+      # Adultos según títulos
+      Title %in% c("Capt", "Col", "Don", "Dr", "Jonkheer", "Major", "Mr", 
+                   "Rev", "Sir", "Lady", "Mlle", "Mme", "Mrs", "Ms", 
+                   "the Countess") ~ "Adulto",
+      # Miss cuando Parch == 0 o Age > 14
+      Title == "Miss" & (Parch == 0 | (!is.na(Age) & Age > 14)) ~ "Adulto",
+      # Master siempre es Menor
+      Title == "Master" ~ "Menor",
+      # Miss cuando Parch > 0
+      Title == "Miss" & Parch > 0 ~ "Menor",
+      TRUE ~ NA_character_
+    )
+  )
+
+age_group_summary <- titanic %>%
+  group_by(Age_Group) %>%
+  summarise(Cantidad = n())
+
+age_group_summary  %>%
+  kbl(
+    col.names = c("Grupo etario", "Cantidad"),
+    caption = "Tabla 9. Cantidad de pasajeros según grupo etario",
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE, 
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    position = "center"
+  )
+
+```
+
+A continuación, realizamos un breve análisis exploratorio de esta nueva variable. La *Figura 23* muestra la distribución de la supervivencia entre adultos y menores en el Titanic. Se observa que entre los adultos, la mayoría no sobrevivió, con 511 pasajeros fallecidos frente a 298 sobrevivientes, lo que representa una proporción de supervivencia de aproximadamente 36.8%. Por otro lado, los menores tienen una mejor proporción de supervivencia, con 44 sobrevivientes frente a 38 no sobrevivientes, lo que equivale a una tasa de supervivencia del 53.7%.
+
+```{r}
+ggplot(titanic, aes(x = Age_Group, fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +  
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),  
+    vjust = -0.5,
+    size = 3
+  ) +
+  labs(
+    title = "Figura 23. Frecuencia de supervivencia por grupo de edad",
+    x = "Grupo de Edad",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  theme_minimal()
+
+```
+
+Si se analiza la proporción de supervivencia según grupo de edad y sexo, se observan diferencias significativas en la supervivencia según el grupo de edad y el género (*Figura 24*). Entre las mujeres adultas, la tasa de supervivencia es alta, alcanzando un 77.9%, lo que evidencia la prioridad dada a mujeres durante la evacuación. En contraste, los hombres adultos tienen una tasa de supervivencia considerablemente menor, de solo 16.0%, mostrando una clara desventaja para este grupo durante el rescate.
+
+Para los menores, tanto hombres como mujeres presentan tasas de supervivencia similares, con 57.5% para los niños y 50.0% para las niñas, reflejando que los niños también fueron priorizados, aunque en menor medida que las mujeres adultas.
+
+```{r}
+ggplot(titanic, aes(x = Age_Group, fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +  
+  facet_wrap(~Sex) +  
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),  
+    vjust = -0.5,
+    size = 3
+  ) +
+  labs(
+    title = "Figura 24. Frecuencia de supervivencia por grupo de edad y sexo",
+    x = "Grupo de Edad",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  theme_minimal()
+```
+
+Se realiza también un análisis de la supervivencia según grupo de edad y clase del boleto (*Figura 25*). En primera clase, tanto los adultos como los menores presentan tasas de supervivencia altas. Esto evidencia las ventajas de los pasajeros de primera clase en las probabilidades de supervivencia. En segunda clase, las tasas de supervivencia son también favorables, aunque ligeramente menores en comparación con la primera clase. Todos los menores que viajaban en segunda clase sobrevivieron. En tercera clase, se observa una fuerte disparidad. Los adultos tienen 335 fallecidos frente a 97 supervivientes, lo que representa una tasa de supervivencia más baja (22.5%). Entre los menores de tercera clase, aunque la proporción mejora, sigue siendo desfavorable, con 22 supervivientes frente a 37 fallecidos, lo que da una tasa de supervivencia de aproximadamente 37.3%.
+
+```{r}
+ggplot(titanic, aes(x = Age_Group, fill = factor(Survived))) +
+  geom_bar(position = position_dodge(width = 0.9)) +  
+  facet_wrap(~Pclass) + 
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),  
+    vjust = -0.5,
+    size = 3
+  ) +
+  labs(
+    title = "Figura 25. Frecuencia de supervivencia por grupo de edad y clase",
+    x = "Grupo de edad",
+    y = "Frecuencia",
+    fill = "Supervivencia"
+  ) +
+  scale_fill_manual(values = c("#ff4d4d", "#ccff99"), labels = c("No", "Sí")) +
+  theme_minimal()
+
+```
+
+La variable "Grupo de Edad", derivada a partir de la clasificación entre menores y mayores de edad, representa una nueva dimensión que podría ser incluida en los modelos de árboles de decisión. A diferencia de la variable original Age, esta nueva variable no presenta valores faltantes. En cuanto a la variable "Cabina", debido a la falta de datos y la incertidumbre sobre la naturaleza de los valores ausentes, consideramos que la variable "Clase" es un mejor indicador de la clase social de los pasajeros.
+
+# Árboles de decisión
+
+Los árboles de decisión son una técnica de aprendizaje supervisado ampliamente utilizada para clasificar datos y predecir resultados, representando las decisiones de manera jerárquica a partir de divisiones sucesivas en las variables predictoras. En este análisis, se empleará un enfoque basado en árboles de decisión clásicos utilizando el **algoritmo CART** (*Classification and Regression Trees*), así como técnicas avanzadas como **Random Forest**, que combina múltiples árboles para mejorar la precisión y reducir el sobreajuste. El objetivo principal es evaluar los perfiles de supervivencia de los pasajeros del Titanic, con la variable `Survived` como respuesta. Se compararán distintos modelos y sus métricas de rendimiento para identificar el enfoque más efectivo en la predicción de la supervivencia, considerando variables como género, puerto de embarque, clase de boleto, entre otras.
+
+## Preparación de los datos
+
+A continuación se preparan los datos para entrenar y evaluar los modelos propuestos de clasificación. En primer lugar, se divide el conjunto de datos en tres partes:
+
+-   ***Conjunto de entrenamiento*** *(training set)*: 70% de los datos son destinados al entrenamiento de modelos.
+
+-   ***Conjunto de prueba*** *(testing set)*: 20% de los datos se utilizan para validar el modelo durante el ajuste de hiperparámetros.
+
+-   ***Conjunto de evaluación*** *(eval test)*: se utiliza el restante 10% para evaluar el rendimiento final del modelo.
+
+El uso de un conjunto de evaluación garantiza una evaluación objetiva de los modelos. A diferencia de los datos de entrenamiento y prueba, el conjunto de evaluación permanece completamente independiente durante todas las etapas del desarrollo del modelo, permitiendo medir su capacidad de generalización en datos nuevos. Esto ayuda a prevenir el sobreajuste, ya que evita que el modelo se ajuste excesivamente a los datos de prueba durante la selección de los hiperparámetros.
+
+```{r}
+#Semilla
+set.seed(1998)
+
+train_index <- createDataPartition(titanic$Survived, p = 0.7, list = FALSE)
+train_data <- titanic[train_index, ]
+temp_data <- titanic[-train_index, ]
+test_index <- createDataPartition(temp_data$Survived, p = 2/3, list = FALSE)
+test_data <- temp_data[test_index, ]
+eval_data <- temp_data[-test_index, ]
+
+# Convertir la variable objetivo a factor
+train_data$Survived <- as.factor(train_data$Survived)
+test_data$Survived <- as.factor(test_data$Survived)
+eval_data$Survived <- as.factor(eval_data$Survived)
+
+# Convertir variables categóricas predictoras a factores
+categorical_vars <- c("Sex", "Age_Group", "Embarked", "cabin_status")
+for (var in categorical_vars) {
+  train_data[[var]] <- as.factor(train_data[[var]])
+  test_data[[var]] <- factor(test_data[[var]], levels = levels(train_data[[var]]))
+  eval_data[[var]] <- factor(eval_data[[var]], levels = levels(train_data[[var]]))
+}
+
+```
+
+## Modelo 1 - CART variables originales
+
+### Entrenamiento del modelo
+
+*Figura 26: Árbol de decisión CART con variables originales*
+
+```{r}
+
+# Entrenar el modelo CART
+cart_model <- rpart(Survived ~ Pclass + Sex + Age+ Parch + SibSp + Fare + Embarked, 
+                    data = train_data, 
+                    method = "class", 
+                    parms = list(split = "gini"))
+
+
+rpart.plot(cart_model, type = 3, extra = 101, under = TRUE)
+```
+
+El árbol de decisión de la *Figura 26* identifica las principales variables y divisiones que determinaron la supervivencia de los pasajeros del Titanic. La variable más importante es el género (`Sex`), que divide a la población en hombres y mujeres, destacando que los hombres tienen una menor probabilidad de supervivencia.
+
+En el caso de los hombres, la tarifa (`Fare`) es un factor clave. Aquellos que pagaron menos de 26 tienen una probabilidad significativamente baja de supervivencia. Por otro lado, entre los hombres que pagaron una tarifa mayor o igual a 26, se introducen más divisiones: los que pagaron al menos 27, pero tienen más de 2 acompañantes (`SibSp` \>= 2), tienen una menor probabilidad de supervivencia. En contraste, los hombres con menos acompañantes y menores de 28 años tienen más probabilidades de sobrevivir.
+
+Por otro lado, en el grupo de mujeres, la clase del boleto (`Pclass`) juega un rol determinante. Las mujeres en primera y segunda clase tienen una alta probabilidad de supervivencia. Para las mujeres de tercera clase, la tarifa nuevamente se convierte en un factor importante: aquellas que pagaron al menos 25 tienen mejores probabilidades de sobrevivir en comparación con las que pagaron menos.
+
+### Evaluación del modelo en el conjunto de prueba
+
+```{r}
+test_predictions <- predict(cart_model, newdata = test_data, type = "class")
+test_conf_matrix <- confusionMatrix(test_predictions, test_data$Survived)
+test_conf_matrix
+```
+
+El modelo evaluado alcanzó una exactitud (accuracy) de 73.6%, lo que refleja un desempeño razonable al clasificar correctamente la supervivencia de los pasajeros. Sin embargo, este valor es algo menor que en evaluaciones anteriores, indicando espacio para mejorar en términos de predicción general.
+
+En términos de métricas específicas, el modelo muestra una sensibilidad (78.76%), lo que significa que identifica correctamente a la mayoría de los pasajeros que no sobrevivieron. Por otro lado, la especificidad (64.62%) refleja un desempeño más limitado para identificar correctamente a los pasajeros que sobrevivieron. Los valores predictivos refuerzan esta idea: el valor predictivo positivo (79.46%) indica un buen desempeño en la predicción de pasajeros no sobrevivientes, mientras que el valor predictivo negativo (63.64%) señala que hay margen de mejora en la identificación de los sobrevivientes.
+
+### Evaluación del modelo en el conjunto de evaluación
+
+```{r}
+eval_predictions <- predict(cart_model, newdata = eval_data, type = "class")
+eval_conf_matrix <- confusionMatrix(eval_predictions, eval_data$Survived)
+eval_conf_matrix
+
+```
+
+El modelo evaluado en el conjunto de evaluación alcanzó una exactitud (accuracy) de 78.65%, lo que indica un buen desempeño general en la clasificación de la supervivencia de los pasajeros. El índice Kappa (0.5652) sugiere un nivel moderado-alto de acuerdo entre las predicciones y los valores reales.
+
+En términos de métricas específicas, el modelo presentó una sensibilidad (80.39%), lo que refleja su capacidad para identificar correctamente a la mayoría de los pasajeros que no sobrevivieron. Además, la especificidad (76.32%) es notablemente alta en comparación con otros modelos, mostrando una mejora en la clasificación correcta de los pasajeros que sobrevivieron. Los valores predictivos respaldan esta evaluación: el valor predictivo positivo (82.00%) y el valor predictivo negativo (74.36%) demuestran un buen equilibrio en la calidad de las predicciones para ambas clases.
+
+### Conclusiones Modelo 1
+
+El desempeño del modelo en los conjuntos de prueba y evaluación muestra una mejora notable en el conjunto de evaluación. La exactitud aumentó de 73.6% en el test a 78.65% en el eval, lo que refleja una mayor capacidad del modelo para generalizar en datos nuevos. Además, la especificidad pasó de 64.62% a 76.32%, destacando una mejora en la identificación de los sobrevivientes, que es la clase minoritaria.
+
+Por otro lado, la sensibilidad se mantuvo alta en ambos conjuntos, alrededor del 80%, indicando que el modelo sigue siendo efectivo en detectar correctamente a los no sobrevivientes. El índice Kappa también mejoró de 0.4324 en el conjunto de prueba a 0.5652 en el de evaluación, lo que sugiere una mayor consistencia en la calidad de las predicciones. Estas métricas destacan la estabilidad y capacidad del modelo para discriminar adecuadamente entre las dos clases.
+
+## Modelo 2 - CART con variables nuevas
+
+### Entrenamiento del modelo
+
+*Figura 27: Árbol de decisión CART con variables nuevas*
+
+```{r}
+set.seed(1998)
+# Entrenar el modelo CART
+cart_model2 <- rpart(Survived ~ Pclass + Sex + Age_Group+ Parch + SibSp + Fare + Embarked + cabin_status, 
+                    data = train_data, 
+                    method = "class", 
+                    parms = list(split = "gini"))
+
+
+rpart.plot(cart_model2, type = 3, extra = 101, under = TRUE)
+```
+
+El árbol de decisión incorpora la variable cabin_status, mostrando cómo la asignación de cabinas influye en las probabilidades de supervivencia. Para los hombres, la ausencia de una cabina asignada está asociada con menores tasas de supervivencia, con diferencias adicionales según el grupo de edad (Age_Group). Los adultos sin cabina tienen menores probabilidades de sobrevivir en comparación con los menores, especialmente si viajaban acompañados (SibSp \>= 2).
+
+En el caso de los hombres con cabina asignada, el monto de la tarifa (Fare) y el tamaño del grupo familiar (SibSp) emergen como factores clave. Aquellos que pagaron tarifas más altas (\>= 27) y tenían menos acompañantes presentan mayores probabilidades de supervivencia.
+
+Para las mujeres, la clase del boleto (Pclass) sigue siendo un factor decisivo. Las pasajeras de tercera clase enfrentan un mayor riesgo de no sobrevivir, particularmente si pagaron tarifas bajas (\< 25). Además, el puerto de embarque (Embarked) introduce un nivel adicional de discriminación, con tasas de supervivencia más altas para aquellas que embarcaron en Cherbourg o Queenstown en comparación con Southampton.
+
+### Evaluación del modelo en el conjunto de prueba
+
+```{r}
+test_predictions2 <- predict(cart_model2, newdata = test_data, type = "class")
+test_conf_matrix2 <- confusionMatrix(test_predictions2, test_data$Survived)
+test_conf_matrix2
+```
+
+El modelo aplicado al conjunto de prueba alcanzó una exactitud del 83.15%, reflejando un desempeño sólido al clasificar correctamente la supervivencia de los pasajeros. La sensibilidad del 85.84% indica que el modelo identifica correctamente una alta proporción de los pasajeros que no sobrevivieron, mientras que una especificidad de 78.46% sugiere un desempeño también adecuado para identificar a los sobrevivientes, aunque con margen de mejora.
+
+El valor predictivo positivo (87.39%) destaca la confianza del modelo al predecir correctamente no sobrevivientes, mientras que el valor predictivo negativo (76.12%) sugiere un menor, pero aún razonable, desempeño al predecir sobrevivientes. Con un índice Kappa de 0.6388, el modelo demuestra un buen nivel de concordancia, validando su capacidad de predicción más allá del azar.
+
+### Evaluación del modelo en el conjunto de evaluación
+
+```{r}
+eval_predictions2 <- predict(cart_model2, newdata = eval_data, type = "class")
+eval_conf_matrix2<- confusionMatrix(eval_predictions2, eval_data$Survived)
+eval_conf_matrix2
+
+```
+
+En el conjunto de evaluación, el modelo mostró una exactitud del 77.53%, indicando un desempeño adecuado pero ligeramente inferior al observado en el conjunto de prueba. La sensibilidad del 88.24% destaca la capacidad del modelo para identificar correctamente la mayoría de los pasajeros que no sobrevivieron. Sin embargo, la especificidad se redujo al 63.16%, reflejando una menor habilidad para identificar a los pasajeros que sobrevivieron.
+
+El valor predictivo positivo (76.27%) y el valor predictivo negativo (80.00%) sugieren que el modelo logra un buen equilibrio entre las predicciones correctas en ambos casos, aunque con margen de mejora en la clasificación de sobrevivientes. Con un índice Kappa de 0.5281, el modelo demuestra un nivel moderado de concordancia, lo que refuerza su capacidad predictiva general, aunque con menor precisión en comparación con el conjunto de prueba.
+
+### Conclusiones Modelo 2
+
+El Modelo 2, basado en árboles de decisión e incluyendo variables adicionales como el estado de cabina y la agrupación por edad, presentó un desempeño consistente tanto en el conjunto de prueba como en el de evaluación, logrando una exactitud del 83.15% y 77.53%, respectivamente. La sensibilidad elevada en ambos casos (85.84% y 88.24%) indica una capacidad sólida para identificar a los pasajeros que no sobrevivieron, lo que refuerza su utilidad en situaciones donde minimizar falsos negativos es prioritario. Sin embargo, la especificidad mostró un rendimiento más modesto, especialmente en el conjunto de evaluación (63.16%), lo que sugiere limitaciones en la identificación precisa de sobrevivientes.
+
+El incremento en la exactitud y el valor Kappa respecto al Modelo 1 destaca el beneficio de incluir variables adicionales, como el estado de cabina.
+
+## Modelo 3 - Árboles de decisión con Random Forest
+
+El modelo *Random Forest* es una extensión avanzada de los árboles de decisión, diseñada para mejorar la precisión y robustez al combinar múltiples árboles en un enfoque de aprendizaje en conjunto (*ensemble learning*). A diferencia de un único árbol de decisión, *Random Forest* construye una colección de árboles independientes entrenados con subconjuntos aleatorios de datos y características, lo que permite reducir el sobreajuste y mejorar la capacidad de generalización.
+
+En este análisis, *Random Forest* se utiliza para evaluar los perfiles de supervivencia de los pasajeros del Titanic, incorporando variables creadas como `cabin_status` y `Age_Group`, junto con las predictoras tradicionales. Este enfoque busca explorar si el uso de múltiples árboles puede mejorar métricas clave como la exactitud, sensibilidad y especificidad, superando los resultados obtenidos con los modelos CART. Finalmente, se evaluarán las métricas de rendimiento del modelo y su capacidad de generalización utilizando los conjuntos de prueba y evaluación, para determinar si este método avanzado ofrece ventajas significativas frente a los árboles de decisión simples.
+
+### Entrenamiento del modelo
+
+```{r}
+set.seed(1998)
+rf_model <- randomForest(Survived ~ Pclass + Sex + Age_Group + Parch + SibSp + Fare + Embarked + cabin_status,
+                         data = train_data,
+                         ntree = 500,           # Número de árboles
+                         mtry = 3,              # Número de variables usadas en cada split
+                         importance = TRUE)     # Calcular importancia de variables
+
+print(rf_model)
+
+```
+
+El modelo Random Forest presentado utiliza 500 árboles y selecciona automáticamente 3 variables en cada división. El error fuera de bolsa (Out-Of-Bag, OOB) es del 17.47%, lo que indica que el modelo tiene un desempeño razonablemente bueno en el conjunto de entrenamiento al predecir correctamente aproximadamente el 82.53% de las observaciones.
+
+```{r}
+varImpPlot(rf_model, main = "Figura 28. Importancia de las variables (Random Forest)")
+```
+
+La *Figura 28* muestra la importancia de las variables utilizadas en el modelo, evaluadas desde dos perspectivas: el impacto en la precisión (*MeanDecreaseAccuracy*) y la reducción de impureza (*MeanDecreaseGini*). El primer gráfico evalúa como la exclusión de una variable afecta a la precisión del modelo, en este caso, la variable `Sex` es la variable con mayor impacto en la precisión general. Luego las variables `Pclass` , `Fare` y `Age_group` contribuyen casi de igual manera a la precisión. En el segundo gráfico nuevamente la variable `Sex` lidera el grupo de variables como aquella que más contribuye a reducir la impureza de los nodos. Luego `Pclass` y `Fare` también tiene un impacto considerable. Las variables como `SibSp`, `Parch`, `cabin_status` y `Embarked` tienen menor importancia en comparación pero aún aportan valor al modelo.
+
+### Evaluación del modelo en el conjunto de prueba
+
+```{r}
+test_predictions_rf <- predict(rf_model, newdata = test_data)
+test_conf_matrix_rf <- confusionMatrix(test_predictions_rf, test_data$Survived)
+test_conf_matrix_rf
+
+```
+
+El modelo Random Forest, evaluado en el conjunto de prueba, logró una exactitud del 80.9%, lo que demuestra un rendimiento robusto en la clasificación de los pasajeros según su supervivencia. Destaca un balance sólido entre sensibilidad (81.42%) y especificidad (80.00%), indicando que el modelo tiene una buena capacidad tanto para identificar correctamente a los pasajeros que no sobrevivieron como a aquellos que sí lo hicieron.
+
+El valor predictivo positivo (87.62%) muestra que, cuando el modelo predice que un pasajero no sobrevivió, es altamente confiable. Sin embargo, el valor predictivo negativo (71.23%) sugiere que aún existe margen de mejora para identificar con precisión a los pasajeros que sobrevivieron. El coeficiente Kappa (0.5985) confirma un buen acuerdo entre las predicciones del modelo y los datos reales, consolidando el modelo como una opción efectiva para este problema.
+
+### Evaluación del modelo en el conjunto de evaluación
+
+```{r}
+eval_predictions_rf <- predict(rf_model, newdata = eval_data)
+eval_conf_matrix_rf <- confusionMatrix(eval_predictions_rf, eval_data$Survived)
+eval_conf_matrix_rf
+```
+
+En el conjunto de evaluación, el modelo Random Forest alcanzó una exactitud del 78.65%, lo que refleja un rendimiento consistente con el conjunto de prueba. La sensibilidad (84.31%) destaca como una fortaleza clave, ya que el modelo identifica correctamente a la mayoría de los pasajeros que no sobrevivieron. Sin embargo, la especificidad (71.05%) es menor, indicando un margen de mejora en la identificación de los pasajeros que sobrevivieron.
+
+El valor predictivo positivo (79.63%) y el valor predictivo negativo (77.14%) sugieren que el modelo mantiene un equilibrio razonable en sus predicciones, aunque la capacidad de diferenciar correctamente a los sobrevivientes podría optimizarse. El coeficiente Kappa (0.5593) respalda la buena concordancia entre las predicciones del modelo y los datos reales, aunque es ligeramente menor que en el conjunto de prueba, indicando que el modelo podría ser menos robusto en datos nuevos.
+
+### Conclusiones Modelo 3
+
+El modelo Random Forest demuestra un rendimiento general robusto tanto en el conjunto de prueba como en el de evaluación, logrando una exactitud consistente en torno al 79%. Su alta sensibilidad en ambos conjuntos subraya su capacidad para identificar correctamente a los pasajeros que no sobrevivieron, mientras que la especificidad refleja un desempeño razonable pero mejorable en la detección de los sobrevivientes. La incorporación de variables adicionales, como el estado de la cabina y los grupos de edad, parece haber contribuido a capturar patrones más complejos en los datos, mejorando ligeramente la capacidad predictiva en comparación con los modelos basados únicamente en árboles de decisión.
+
+Sin embargo, las métricas como el coeficiente Kappa y los valores predictivos indican que, aunque el modelo es consistente, todavía existe un margen para optimizar la discriminación entre clases, particularmente en los sobrevivientes. En resumen, Random Forest ofrece un equilibrio entre precisión y generalización, siendo un modelo adecuado para abordar este problema, aunque se podrían explorar técnicas adicionales, como ajustes en los hiperparámetros o el uso de algoritmos complementarios, para maximizar su desempeño.
+
+## Comparación de modelos
+
+Para evaluar de manera más precisa el desempeño de los tres modelos desarrollados (CART básico, CART mejorado y Random Forest), se realiza una comparación de las curvas ROC (Receiver Operating Characteristic) generadas a partir de las predicciones en el conjunto de prueba. La curva ROC es una herramienta clave para analizar la capacidad discriminativa de un modelo, mostrando el equilibrio entre la sensibilidad y la especificidad a través de diferentes umbrales. Además, se calcula el área bajo la curva (AUC, por sus siglas en inglés) como métrica resumen: un valor mayor de AUC indica una mejor capacidad del modelo para diferenciar entre pasajeros sobrevivientes y no sobrevivientes. La visualización comparativa de estas curvas permite identificar qué modelo logra un desempeño superior en términos de discriminación.
+
+```{r}
+library(pROC)
+pred_cart1 <- predict(cart_model, test_data, type = "prob")[, 2]
+pred_cart2 <- predict(cart_model2, test_data, type = "prob")[, 2]
+pred_rf <- predict(rf_model, test_data, type = "prob")[, 2]
+true_labels <- as.numeric(as.character(test_data$Survived)) # Convertir a numérico
+roc_cart1 <- roc(true_labels, pred_cart1, levels = c(0, 1), direction = "<", plot = FALSE)
+roc_cart2 <- roc(true_labels, pred_cart2, levels = c(0, 1), direction = "<", plot = FALSE)
+roc_rf <- roc(true_labels, pred_rf, levels = c(0, 1), direction = "<", plot = FALSE)
+auc_cart1 <- auc(roc_cart1)
+auc_cart2 <- auc(roc_cart2)
+auc_rf <- auc(roc_rf)
+plot(roc_cart1, col = "blue", lwd = 2, main = "Figura 29. Comparación de curvas ROC", print.auc = FALSE)
+lines(roc_cart2, col = "green", lwd = 2)
+lines(roc_rf, col = "red", lwd = 2)
+
+legend("bottomright",
+       legend = c(
+         paste("Modelo 1: CART (AUC =", round(auc_cart1, 3), ")"),
+         paste("Modelo 2: CART Mejorado (AUC =", round(auc_cart2, 3), ")"),
+         paste("Modelo 3: Random Forest (AUC =", round(auc_rf, 3), ")")
+       ),
+       col = c("blue", "green", "red"),
+       lwd = 2)
+```
+
+La comparación de las curvas ROC revela diferencias importantes en el desempeño de los modelos evaluados. El modelo básico CART (Modelo 1) presenta un AUC de 0.791, lo que indica un desempeño aceptable, pero claramente inferior en comparación con los otros dos modelos. Por su parte, el modelo CART mejorado (Modelo 2), que incluye variables adicionales como cabin_status y Age_Group, logra un AUC de 0.884, evidenciando una mejora sustancial en su capacidad para distinguir entre pasajeros sobrevivientes y no sobrevivientes.
+
+El modelo Random Forest (Modelo 3) alcanza un AUC de 0.868, muy cercano al del CART mejorado, pero ligeramente inferior. Esto sugiere que, aunque Random Forest es robusto y ofrece un buen rendimiento, el modelo CART mejorado puede ser una opción más eficiente y explicable, dado que logra un desempeño comparable con un menor nivel de complejidad. En general, la inclusión de variables adicionales en el Modelo 2 marcó una diferencia significativa en la capacidad predictiva, y tanto el CART mejorado como el Random Forest superan ampliamente al CART básico.
+
+# Conclusiones y discusión
+
+El análisis exhaustivo de los datos del Titanic, combinando técnicas exploratorias y modelos predictivos, nos permite extraer varias conclusiones significativas:
+
+1.  **Factores determinantes de supervivencia:**
+
+    -   El género fue el factor más influyente, con una marcada ventaja para las mujeres.
+
+    -   La clase socioeconómica relacionada a la variable clase del boleto mostró una fuerte relación con la supervivencia, favoreciendo a los pasajeros de primera clase.
+
+    -   El grupo etario, particularmente ser menor de edad, aumentó las probabilidades de supervivencia.
+
+    -   La asignación de cabina, estrechamente relacionada con la clase, también influyó en las posibilidades de sobrevivir.
+
+    -   El protocolo "mujeres y niños primero" tuvo un impacto significativo.
+
+2.  **Desigualdades estructurales:**
+
+    -   Los resultados revelan profundas disparidades sociales en la tragedia
+
+    -   Los pasajeros de tercera clase enfrentaron desventajas significativas:
+
+        -   Menor acceso a botes salvavidas
+
+        -   Ubicación en niveles inferiores del barco
+
+        -   Menor tasa de supervivencia incluso entre mujeres y niños
+
+3.  **Efectividad de los modelos:**
+
+    -   En la comparación inicial basada en métricas puntuales como exactitud, sensibilidad y especificidad, los modelos mostraron diferencias moderadas. El modelo CART mejorado, que incluía variables adicionales como el estado de cabina y el grupo de edad, no evidenció una mejora contundente respecto al modelo CART básico.
+
+    -   Al analizar las curvas ROC, surgió una perspectiva distinta: el modelo CART mejorado presentó el mayor AUC (0.884), superando tanto al modelo básico como al Random Forest. Esto indica que, aunque las métricas puntuales no reflejaban una mejora significativa, el modelo mejorado ofreció un mejor equilibrio entre sensibilidad y especificidad en todo el rango de decisión, consolidándose como el más robusto para la caracterización de perfiles de supervivencia.
+
+El análisis plantea interrogantes importantes sobre la intersección entre clase social y género en situaciones de crisis. Aunque el protocolo de evacuación priorizó a mujeres y niños, su efectividad varió significativamente según la clase social, sugiriendo que las desigualdades estructurales pueden persistir incluso en momentos de emergencia extrema.
+
+El desarrollo de modelos predictivos como CART y Random Forest aporta una estructura y rigor que trascienden el análisis exploratorio inicial. Durante la exploración de los datos, se observaron patrones aparentes, como la influencia del sexo, la clase o el estado de cabina en la supervivencia. Sin embargo, muchos de estos efectos podrían estar confundidos con otros factores, como la tarifa pagada o el grupo de edad, dificultando una interpretación clara. Los modelos permiten desentrañar estas relaciones al aislar el impacto relativo de cada variable, evitando interpretaciones sesgadas.
+
+Además, mientras que el análisis exploratorio puede sugerir correlaciones, los modelos ofrecen una evaluación cuantitativa más robusta, incluyendo métricas de desempeño que permiten comparar y validar hipótesis. Por ejemplo, aunque exploratoriamente el estado de cabina parecía relevante, su incorporación en los modelos confirmó su importancia al mejorar el desempeño predictivo, como evidenció el AUC más alto del modelo mejorado. Así, los modelos no solo confirman patrones observados, sino que también corrigen percepciones erróneas al analizar la interacción y el peso relativo de las variables en el contexto completo del problema.
+
+Además de los modelos utilizados, como CART y Random Forest, existen diversas técnicas que podrían aportar una perspectiva complementaria o más profunda en la caracterización de los perfiles de supervivencia. Una opción es la regresión logística, que modela la probabilidad de supervivencia en función de las variables explicativas y permite interpretar directamente la magnitud del efecto de cada predictor a través de sus coeficientes. Esto sería útil para evaluar relaciones lineales y entender mejor la interacción entre variables clave, como la tarifa y la clase.
+
+Otra alternativa son los modelos de árboles más avanzados, como Gradient Boosting Machines (GBM) o XGBoost, que suelen superar a Random Forest en tareas predictivas al optimizar iterativamente errores residuales. Estas técnicas podrían capturar patrones más complejos y mejorar la precisión del modelo, aunque a menudo sacrifican interpretabilidad.
+
+Por último, enfoques basados en técnicas no paramétricas, como Support Vector Machines (SVM), podrían separar los perfiles de supervivencia de manera más precisa en espacios multidimensionales. Del mismo modo, métodos de aprendizaje profundo, como redes neuronales, podrían modelar interacciones altamente no lineales entre variables. Sin embargo, estos últimos requieren grandes volúmenes de datos y son menos interpretables, lo que podría limitar su aplicabilidad en este caso.
+
+En resumen, mientras que los árboles de decisión ofrecen interpretabilidad, técnicas como la regresión logística, boosting, o incluso modelos basados en aprendizaje profundo, podrían complementar este análisis al proporcionar mayor precisión, robustez o capacidad de manejo de relaciones más complejas.
+
+Los resultados de este trabajo también invitan a reflexionar sobre cómo las decisiones de diseño y políticas de seguridad en medios de transporte pueden tener impactos diferenciales según la clase social. La tragedia del Titanic no solo cambió los protocolos de seguridad marítima, sino que también expuso crudamente las consecuencias de la estratificación social en situaciones de vida o muerte.
+
+Finalmente, este análisis demuestra el valor de combinar métodos estadísticos modernos con datos históricos para comprender mejor eventos pasados y extraer lecciones relevantes para el presente.
+
+# Fuentes consultadas
+
+- National Geographic (<https://historia.nationalgeographic.com.es/a/historia-titanic-tragedia-barco-insumergible_16344>)
+
+ - Enciclopedia Titanica (2019) (<https://www.encyclopedia-titanica.org>)
+ 
+ - Wikipedia(<https://en.wikipedia.org/wiki/Titanic>)
+ 
+
